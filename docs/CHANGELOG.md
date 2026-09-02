@@ -10,6 +10,7 @@
 - Official logo app (thank god im making this faster than Dades)
 - Category grid now shows item counts and uses high-quality PNG icons
 - File Viewer with breadcrumb navigation and search bar
+- Storage capacity bar at main menu look weird 
 - Add new file/folder, rename, delete,... all anything about a file manager still not have, it only viewer file
 - Back in android navigation will exit app, will fix next version
 - Still not supporting root (will add next version)
