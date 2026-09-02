@@ -44,12 +44,12 @@ jobs:
         run: |
           cd app/build/outputs/apk/release/
           for file in *.apk; do
-            mv "$file" "${file/app/Dades}"
+            mv "$file" "${file/app/Basda}"
           done
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/Dades-*.apk
+          files: app/build/outputs/apk/release/Basda-*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
