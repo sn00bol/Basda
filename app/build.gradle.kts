@@ -56,7 +56,7 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystoreFile = file("${project.rootDir}/app/keystore.jks")
+            val keystoreFile = file("${project.rootDir}/app/basda")
             if (keystoreFile.exists()) {
                 storeFile = keystoreFile
                 storePassword = System.getenv("KEY_STORE_PASSWORD")
