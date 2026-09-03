@@ -3,7 +3,7 @@
   <h1><b>Basda</b></h1>
   <p>A minimalist open-source file manager app for Android</p>
   <p>
-    <a href="https://github.com/sn00bol/Basda/releases"><img src="https://img.shields.io/github/v/release/sn00bol/Basda?sort=date&include_prereleases" alt="GitHub Release" /></a>
+    <a href="https://github.com/sn00bol/Basda/releases"><img src="https://img.shields.io/github/v/release/sn00bol/Basda?include_prereleases" alt="GitHub Release" /></a>
     <a href="https://github.com/sn00bol/Basda/actions"><img src="https://img.shields.io/github/actions/workflow/status/sn00bol/Basda/ci.yml" alt="Release Build Status" /></a>
     <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPL%20v3.0-blue.svg" alt="License" /></a>
   </p>
