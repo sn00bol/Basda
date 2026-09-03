@@ -16,8 +16,7 @@ migrate_working_dir/
 .gradle/
 build/
 .cxx/
-basda
-
+app/basda
 # Local configuration file (sdk path, etc)
 local.properties
 
