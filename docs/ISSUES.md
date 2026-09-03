@@ -13,11 +13,13 @@
 
 ## STILL NOT FIX OR OTHER ISSUE
 
-
-
 ### [ISSUE-002]: Add new file/folder, rename, delete,... all anything about a file manager still not have, it only viewer file
 - **Status:** Not fixed
 - **Description:** you know the issue name right?
+
+## [ISSUE-003]: Download category only image work
+- **Status:** Not fixed
+- **Description:** Currently only image working, other like APK, documents,... even All file not working
 
 ---
 
