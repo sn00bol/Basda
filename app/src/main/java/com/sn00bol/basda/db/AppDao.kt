@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
+import com.sn00bol.basda.db.UserEntity
+import com.sn00bol.basda.db.FileCacheEntity
 
 @Dao
 interface AppDao {

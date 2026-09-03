@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.androidx.room)
 }
 
 android {
@@ -20,11 +19,6 @@ android {
         ndk {
             abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) // x86_64 and x86 only for debug and testing, not official release
         }
-    }
-
-    //noinspection WrongGradleMethod
-    room {
-        schemaDirectory("$projectDir/schemas")
     }
 
     signingConfigs {
@@ -73,6 +67,11 @@ android {
             isUniversalApk = true
         }
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.generateKotlin", "true")
 }
 
 dependencies {

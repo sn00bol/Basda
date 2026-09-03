@@ -13,20 +13,20 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Java Development Kit 20
-        uses: actions/setup-java@v5
+      - name: Setup Java Development Kit 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '20'
+          java-version: '17'
           cache: gradle
 
-      - name: Decrypt Keystore in GitHub Secrets
+      - name: Decrypt Keystore
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > app/basda
 
-      - name: Gradle
+      - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build APK Release
@@ -34,11 +34,11 @@ jobs:
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace
 
-      - name: Cleanning
+      - name: Cleaning Keystore
         if: always()
-        run: rm -f app/keystore.jks
+        run: rm -f app/basda
 
       - name: Rename APKs
         run: |
