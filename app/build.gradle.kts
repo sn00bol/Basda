@@ -7,9 +7,7 @@ plugins {
 
 android {
     namespace = "com.sn00bol.basda"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.sn00bol.basda"
@@ -29,31 +27,6 @@ android {
         schemaDirectory("$projectDir/schemas")
     }
 
-    buildTypes {
-        release {
-            optimization {
-                enable = false
-            }
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
-
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = true
-        }
-    }
-
     signingConfigs {
         create("release") {
             val keystoreFile = file("${project.rootDir}/app/basda")
@@ -68,11 +41,36 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            
+            // Chỉ áp dụng signingConfig nếu có đủ thông tin, tránh lỗi khi build local
+            val releaseConfig = signingConfigs.getByName("release")
+            if (releaseConfig.storeFile?.exists() == true && !releaseConfig.storePassword.isNullOrBlank()) {
+                signingConfig = releaseConfig
             }
+        }
+    }
 
-            signingConfig = signingConfigs.getByName("release")
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
         }
     }
 }
