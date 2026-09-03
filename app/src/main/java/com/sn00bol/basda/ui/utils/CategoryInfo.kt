@@ -46,8 +46,8 @@ val CATEGORIES = listOf(
     ),
     CategoryDetail(
         CategoryType.APKS,
-        "APK",
-        R.drawable.apk,
+        "APKs",
+        R.drawable.apk2,
         listOf("apk", "xapk", "apks")
     )
 )

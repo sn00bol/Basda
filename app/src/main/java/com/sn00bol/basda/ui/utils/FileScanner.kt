@@ -1,9 +1,11 @@
 package com.sn00bol.basda.ui.utils
 
+import android.content.ContentResolver
 import android.content.Context
+import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
-import com.sn00bol.basda.ui.screens.FileItem
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -44,6 +46,71 @@ object FileScanner {
                 queryMediaStoreFiles(context, detail.extensions)
             }
         }
+    }
+
+    fun getRecentFiles(context: Context, limit: Int = 100): List<FileItem> {
+        val uri = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED
+        )
+        
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val files = mutableListOf<FileItem>()
+
+        val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+        
+        val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val queryArgs = Bundle().apply {
+                putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+                putStringArray(
+                    ContentResolver.QUERY_ARG_SORT_COLUMNS,
+                    arrayOf(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                )
+                putInt(
+                    ContentResolver.QUERY_ARG_SORT_DIRECTION,
+                    ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
+                )
+            }
+            context.contentResolver.query(uri, projection, queryArgs, null)
+        } else {
+            context.contentResolver.query(
+                uri,
+                projection,
+                null,
+                null,
+                sortOrder
+            )
+        }
+
+        cursor?.use { c ->
+            val nameIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+            val dataIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
+            val sizeIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+            val dateIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+
+            var count = 0
+            while (c.moveToNext() && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || count < limit)) {
+                val name = c.getString(nameIndex) ?: ""
+                val path = c.getString(dataIndex) ?: ""
+                val size = c.getLong(sizeIndex)
+                val date = c.getLong(dateIndex) * 1000
+
+                files.add(
+                    FileItem(
+                        name = name,
+                        isDirectory = false,
+                        lastModified = dateFormat.format(Date(date)),
+                        size = formatFileSize(size),
+                        fullPath = path
+                    )
+                )
+                count++
+            }
+        }
+        return files
     }
 
     private fun queryMediaStoreCount(context: Context, extensions: List<String>): Int {

@@ -19,3 +19,4 @@ val DarkSurface = Color(0xFF3A3A3A)
 
 val MainMenuBackground = Color(0xFFF0F2F5)
 val DarkBlueStorage = Color(0xFF1056A8) // Xanh đậm cho ô Storage
+val LightBlueStorage = Color(0xFF2196F3) // Màu xanh nhạt hơn cho SD Card

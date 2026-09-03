@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.0.1 ALPHA - 09.03.2026
+- Upgrade database and advance cache
+- Optimizing background with mediastore to load recent tab
+- Redesign UI/UX with immersive and add some animation for settings, file viewer,...
+- Redesign app logo
+- Dynamic storage card at main menu and enlarged file list items
+- Compact category and optimizing main menu
+- Remake settings and add theme mode
+- Fix Click back android navigation make app exit and status bar visibility
+
 ## v0.0.0 ALPHA - 09.02.2026
 - Added dedicated views for Images, Videos, Audio, Documents, Downloads, and APKs
 - Grid-style view for Images and Videos with play icons for videos

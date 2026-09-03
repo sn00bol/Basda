@@ -1,13 +1,18 @@
 package com.sn00bol.basda.ui.screens
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
@@ -15,56 +20,60 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.sn00bol.basda.R
 import com.sn00bol.basda.ui.theme.BluePrimary
 import com.sn00bol.basda.ui.theme.DarkBlueStorage
-import com.sn00bol.basda.ui.theme.MainMenuBackground
+import com.sn00bol.basda.ui.theme.LightBlueStorage
 import com.sn00bol.basda.ui.utils.CATEGORIES
 import com.sn00bol.basda.ui.utils.CategoryDetail
 import com.sn00bol.basda.ui.utils.CategoryType
-import com.sn00bol.basda.ui.utils.FileScanner
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import com.sn00bol.basda.ui.utils.DataRepository
+import com.sn00bol.basda.ui.utils.SettingsManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainMenu(
+    hasPermissions: Boolean = true,
     onNavigateToFileView: (path: String) -> Unit,
     onNavigateToCategory: (CategoryType, String) -> Unit,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { 2 })
 
-    val internalStorage = remember { 
-        com.sn00bol.basda.ui.utils.StorageHelper.getInternalStorageInfo(context) 
+    val internalStorage = remember(hasPermissions) {
+        com.sn00bol.basda.ui.utils.StorageHelper.getInternalStorageInfo(context)
     }
-    val externalStorage = remember { 
-        com.sn00bol.basda.ui.utils.StorageHelper.getExternalStorageInfo(context) 
+    val externalStorage = remember(hasPermissions) {
+        com.sn00bol.basda.ui.utils.StorageHelper.getExternalStorageInfo(context)
     }
-    val sdCardPath = remember {
+    val sdCardPath = remember(hasPermissions) {
         com.sn00bol.basda.ui.utils.StorageHelper.getSdCardPath(context)
     }
+
+    val recentFilesFromDb by DataRepository.getRecentFilesFromDb()?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) }
+    val recentFiles = recentFilesFromDb
+
+    var isRecentGridView by remember {
+        mutableStateOf(SettingsManager.getViewMode("recent"))
+    }
+
+    val isGridEnabled = SettingsManager.useGlobalGrid || isRecentGridView
 
     Scaffold(
         topBar = {
@@ -77,6 +86,27 @@ fun MainMenu(
                             contentDescription = "Search",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                    if (pagerState.currentPage == 1) {
+                        IconButton(onClick = {
+                            isRecentGridView = !isRecentGridView
+                            SettingsManager.setViewMode("recent", isRecentGridView)
+                        }) {
+                            AnimatedContent(
+                                targetState = isGridEnabled,
+                                transitionSpec = {
+                                    fadeIn() + scaleIn() togetherWith fadeOut() + scaleOut()
+                                },
+                                label = "LayoutIcon"
+                            ) { isGrid ->
+                                Icon(
+                                    painter = painterResource(id = if (isGrid) R.drawable.list else R.drawable.grid),
+                                    contentDescription = "Toggle Layout",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
@@ -95,164 +125,282 @@ fun MainMenu(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Adjust menu layout") },
-                                onClick = { 
+                                onClick = {
                                     showMenu = false
                                 },
-                                leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) }
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = Icons.Outlined.Edit, 
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    ) 
+                                }
                             )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
-                                onClick = { 
+                                onClick = {
                                     showMenu = false
-                                    onSettingsClick() 
+                                    onSettingsClick()
                                 },
-                                leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) }
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = Icons.Outlined.Settings, 
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    ) 
+                                }
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MainMenuBackground
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MainMenuBackground,
+                containerColor = MaterialTheme.colorScheme.background,
                 tonalElevation = 0.dp
             ) {
                 NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(imageVector = if (selectedTab == 0) Icons.Default.Folder else Icons.Outlined.Folder, contentDescription = "Files") },
+                    selected = pagerState.currentPage == 0,
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(0) }
+                    },
+                    icon = { Icon(imageVector = if (pagerState.currentPage == 0) Icons.Default.Folder else Icons.Outlined.Folder, contentDescription = "Files") },
                     label = { Text("Files") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = BluePrimary,
                         selectedTextColor = BluePrimary,
-                        indicatorColor = Color(0xFFE3F2FD),
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         unselectedIconColor = Color.Gray,
                         unselectedTextColor = Color.Gray
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(imageVector = if (selectedTab == 1) Icons.Default.History else Icons.Outlined.History, contentDescription = "Recent") },
+                    selected = pagerState.currentPage == 1,
+                    onClick = {
+                        scope.launch { pagerState.animateScrollToPage(1) }
+                    },
+                    icon = { Icon(imageVector = if (pagerState.currentPage == 1) Icons.Default.History else Icons.Outlined.History, contentDescription = "Recent") },
                     label = { Text("Recent") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = BluePrimary,
                         selectedTextColor = BluePrimary,
-                        indicatorColor = Color(0xFFE3F2FD),
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         unselectedIconColor = Color.Gray,
                         unselectedTextColor = Color.Gray
                     )
                 )
             }
         },
-        containerColor = MainMenuBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        if (selectedTab == 0) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        StorageCard(
-                            title = "Internal storage",
-                            free = internalStorage.free,
-                            total = internalStorage.total,
-                            progress = internalStorage.progress,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigateToFileView("/storage/emulated/0") }
-                        )
-
-                        if (externalStorage != null && sdCardPath != null) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1
+        ) { page ->
+            if (page == 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(innerPadding)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             StorageCard(
-                                title = "SD Card",
-                                free = externalStorage.free,
-                                total = externalStorage.total,
-                                progress = externalStorage.progress,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onNavigateToFileView(sdCardPath) }
+                                title = "Internal storage",
+                                free = internalStorage.free,
+                                total = internalStorage.total,
+                                progress = internalStorage.progress,
+                                containerColor = DarkBlueStorage,
+                                modifier = Modifier.weight(if (externalStorage != null && sdCardPath != null) 2.2f else 1f),
+                                onClick = { onNavigateToFileView("/storage/emulated/0") }
                             )
+
+                            if (externalStorage != null && sdCardPath != null) {
+                                StorageCard(
+                                    title = "SD Card",
+                                    free = externalStorage.free,
+                                    total = externalStorage.total,
+                                    progress = externalStorage.progress,
+                                    containerColor = LightBlueStorage,
+                                    modifier = Modifier.weight(1.8f),
+                                    showTotal = false,
+                                    onClick = { onNavigateToFileView(sdCardPath) }
+                                )
+                            }
                         }
                     }
-                }
 
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Card(
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Card(
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier
-                                    .height(280.dp)
-                                    .padding(0.dp),
-                                userScrollEnabled = false
+                            Column(
+                                modifier = Modifier.padding(12.dp)
                             ) {
-                                items(CATEGORIES) { category ->
-                                    CategoryCard(
-                                        detail = category,
-                                        onClick = {
-                                            onNavigateToCategory(category.type, category.title)
-                                        }
-                                    )
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(3),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .height(200.dp),
+                                    userScrollEnabled = false
+                                ) {
+                                    items(CATEGORIES) { category ->
+                                        CategoryCard(
+                                            detail = category,
+                                            hasPermissions = hasPermissions,
+                                            onClick = {
+                                                onNavigateToCategory(category.type, category.title)
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Card(
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                MainMenuActionItem(
+                                    icon = Icons.Outlined.Lock,
+                                    title = "Secret folder",
+                                    onClick = { /* Blank action */ }
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                )
+                                MainMenuActionItem(
+                                    icon = Icons.Outlined.Delete,
+                                    title = "Recently deleted",
+                                    onClick = { /* Blank action */ }
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                )
+                                MainMenuActionItem(
+                                    icon = Icons.Outlined.Analytics,
+                                    title = "Analysis storage",
+                                    onClick = { /* Blank action */ }
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Recent file will appear here",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
+            } else {
+                if (recentFiles.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No recent files",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                        CategoryFileList(
+                            files = recentFiles,
+                            categoryType = CategoryType.DOWNLOADS,
+                            isGrid = isGridEnabled,
+                            containerColor = MaterialTheme.colorScheme.background
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
+fun MainMenuActionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
 fun CategoryCard(
     detail: CategoryDetail,
+    hasPermissions: Boolean = true,
     onClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val countState = produceState(initialValue = 0, detail.type) {
-        value = withContext(Dispatchers.IO) {
-            FileScanner.getCategoryCount(context, detail.type)
-        }
+    val count = if (hasPermissions) {
+        DataRepository.getCategoryCount(context, detail.type)
+    } else {
+        0
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.85f)
+            .aspectRatio(1.2f)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -262,10 +410,10 @@ fun CategoryCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(42.dp)
                     .background(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -273,19 +421,19 @@ fun CategoryCard(
                     painter = painterResource(id = detail.iconRes),
                     contentDescription = detail.title,
                     tint = Color.Unspecified,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = detail.title,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${countState.value} items",
+                text = "$count",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
@@ -299,48 +447,64 @@ fun StorageCard(
     free: String,
     total: String,
     progress: Float,
+    containerColor: Color,
     modifier: Modifier = Modifier,
+    showTotal: Boolean = true,
     onClick: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = DarkBlueStorage
+            containerColor = containerColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .fillMaxHeight()
             .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
-                .padding(20.dp)
+                .padding(16.dp)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         text = free,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = " | $total",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(bottom = 2.dp)
-                    )
+                    if (showTotal) {
+                        val displayTotal = remember(total) {
+                            total.replace(Regex("""\.\d{2}"""), "")
+                        }
+                        Text(
+                            text = " | $displayTotal",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(bottom = 2.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
 
                 LinearProgressIndicator(

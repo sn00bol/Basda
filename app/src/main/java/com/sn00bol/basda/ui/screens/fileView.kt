@@ -1,13 +1,13 @@
 package com.sn00bol.basda.ui.screens
 
-import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,27 +28,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import com.sn00bol.basda.R
-import com.sn00bol.basda.ui.utils.getIconForExtension
-import com.sn00bol.basda.ui.utils.formatFileSize
-import com.sn00bol.basda.ui.utils.SettingsManager
+import com.sn00bol.basda.ui.utils.*
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.log10
-import kotlin.math.pow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileViewScreen(
     onBack: () -> Unit,
     onSettingsClick: () -> Unit,
+    hasPermissions: Boolean = true,
     initialPath: String = "/storage/emulated/0"
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
+    var entryVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        entryVisible = true
+    }
 
     val normalizedInitialPath = remember(initialPath) {
         if (initialPath.endsWith("/") && initialPath.length > 1) initialPath.dropLast(1) else initialPath
@@ -56,33 +57,27 @@ fun FileViewScreen(
     
     var currentPath by remember(normalizedInitialPath) { mutableStateOf(normalizedInitialPath) }
 
-    fun checkPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
+    var isLocalGridView by remember(currentPath) { 
+        mutableStateOf(SettingsManager.getViewMode("file_view_$currentPath")) 
+    }
+    
+    val isGridEnabled = SettingsManager.useGlobalGrid || isLocalGridView
+
+    BackHandler {
+        val file = java.io.File(currentPath)
+        val parent = file.parent
+
+        if (currentPath == normalizedInitialPath || currentPath == "/storage/emulated/0") {
+            onBack()
+        } else if (parent != null && parent.startsWith("/storage")) {
+            currentPath = parent
         } else {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
+            onBack()
         }
     }
 
-    var hasStoragePermission by remember { mutableStateOf(checkPermission()) }
-
-    val manageStorageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        hasStoragePermission = checkPermission()
-    }
-
-    val requestPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasStoragePermission = isGranted
-    }
-
-    val files = remember(currentPath, searchQuery, hasStoragePermission, SettingsManager.showHiddenFiles) {
-        if (!hasStoragePermission) return@remember emptyList()
+    val files = remember(currentPath, searchQuery, SettingsManager.showHiddenFiles, hasPermissions) {
+        if (!hasPermissions || currentPath.isEmpty()) return@remember emptyList()
         
         try {
             val root = java.io.File(currentPath)
@@ -118,138 +113,146 @@ fun FileViewScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = when (currentPath) {
-                            "/storage/emulated/0" -> "Internal storage"
-                            normalizedInitialPath -> {
-                                if (currentPath.contains("emulated")) "Internal storage" else "SD Card"
-                            }
-                            else -> java.io.File(currentPath).name
-                        },
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        val file = java.io.File(currentPath)
-                        val parent = file.parent
-
-                        if (currentPath == normalizedInitialPath || currentPath == "/storage/emulated/0") {
-                            onBack()
-                        } else if (parent != null && parent.startsWith("/storage")) {
-                            currentPath = parent
-                        } else {
-                            onBack()
-                        }
-                    }) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (isSearchActive) {
+                SearchTopBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    isGridView = isGridEnabled,
+                    onToggleGridView = {
+                        isLocalGridView = !isLocalGridView
+                        SettingsManager.setViewMode("file_view_$currentPath", isLocalGridView)
+                    },
+                    onCloseClick = { 
+                        isSearchActive = false
+                        searchQuery = ""
                     }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = when (currentPath) {
+                                "/storage/emulated/0" -> "Internal storage"
+                                normalizedInitialPath -> {
+                                    if (currentPath.contains("emulated")) "Internal storage" else "SD Card"
+                                }
+                                else -> java.io.File(currentPath).name
+                            },
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            val file = java.io.File(currentPath)
+                            val parent = file.parent
+
+                            if (currentPath == normalizedInitialPath || currentPath == "/storage/emulated/0") {
+                                onBack()
+                            } else if (parent != null && parent.startsWith("/storage")) {
+                                currentPath = parent
+                            } else {
+                                onBack()
+                            }
+                        }) {
                             Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More",
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack, 
+                                contentDescription = "Back",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            offset = androidx.compose.ui.unit.DpOffset(x = (0).dp, y = (-50).dp),
-                            shape = RoundedCornerShape(16.dp),
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Trash bin") },
-                                onClick = { 
-                                    showMenu = false
-                                    // Handle Trash bin
-                                },
-                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Settings") },
-                                onClick = { 
-                                    showMenu = false
-                                    onSettingsClick()
-                                },
-                                leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) }
+                    },
+                    actions = {
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Search, 
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                        IconButton(onClick = {
+                            isLocalGridView = !isLocalGridView
+                            SettingsManager.setViewMode("file_view_$currentPath", isLocalGridView)
+                        }) {
+                            AnimatedContent(
+                                targetState = isGridEnabled,
+                                transitionSpec = {
+                                    fadeIn() + scaleIn() togetherWith fadeOut() + scaleOut()
+                                },
+                                label = "LayoutIcon"
+                            ) { isGrid ->
+                                Icon(
+                                    painter = painterResource(id = if (isGrid) R.drawable.list else R.drawable.grid),
+                                    contentDescription = "Toggle Layout",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                offset = androidx.compose.ui.unit.DpOffset(x = (0).dp, y = (-50).dp),
+                                shape = RoundedCornerShape(16.dp),
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Trash bin") },
+                                    onClick = { 
+                                        showMenu = false
+                                        // Handle Trash bin
+                                    },
+                                    leadingIcon = { 
+                                        Icon(
+                                            imageVector = Icons.Outlined.Delete, 
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        ) 
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Settings") },
+                                    onClick = { 
+                                        showMenu = false
+                                        onSettingsClick()
+                                    },
+                                    leadingIcon = { 
+                                        Icon(
+                                            imageVector = Icons.Outlined.Settings, 
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        ) 
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
-            )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Search bar
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .height(46.dp),
-                placeholder = { 
-                    Text(
-                        "Search files...", 
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        style = MaterialTheme.typography.bodyMedium
-                    ) 
-                },
-                textStyle = MaterialTheme.typography.bodyMedium,
-                leadingIcon = {
-                    Icon(imageVector = Icons.Outlined.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
-                    } else {
-                        IconButton(onClick = { /* Handle Voice Search */ }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Mic,
-                                contentDescription = "Voice Search",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                },
-                shape = RoundedCornerShape(24.dp),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                )
-            )
-
             // Current path: Breadcrumb clickable
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -311,70 +314,102 @@ fun FileViewScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                if (!hasStoragePermission) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Lock,
-                            contentDescription = "No Permission",
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Not gain storage permission",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "You haven't gain storage permission so you cannot view anything here",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(
-                            onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                        data = "package:${context.packageName}".toUri()
-                                    }
-                                    manageStorageLauncher.launch(intent)
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = entryVisible,
+                    enter = fadeIn(animationSpec = tween(500)) + slideInVertically(
+                        initialOffsetY = { it / 40 },
+                        animationSpec = tween(500)
+                    ),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        AnimatedContent(
+                            targetState = currentPath to files,
+                            transitionSpec = {
+                                val (targetPath, targetFiles) = targetState
+                                val (initialPath, _) = initialState
+                                
+                                if (targetFiles.isEmpty() && searchQuery.isEmpty()) {
+                                    fadeIn(tween(150)) togetherWith fadeOut(tween(150))
                                 } else {
-                                    requestPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                                    val isForward = targetPath.length > initialPath.length
+                                    if (isForward) {
+                                        (slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(350)) + fadeIn())
+                                            .togetherWith(slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(350)) + fadeOut())
+                                    } else {
+                                        (slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(350)) + fadeIn())
+                                            .togetherWith(slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(350)) + fadeOut())
+                                    }
                                 }
                             },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Gain permission now")
-                        }
-                    }
-                } else if (files.isEmpty() && searchQuery.isEmpty()) {
-                    Text(
-                        text = "Empty folder",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(files) { file ->
-                            FileListItem(file = file, onClick = { 
-                                if (file.isDirectory) {
-                                    currentPath = if (currentPath.endsWith("/")) {
-                                        currentPath + file.name
-                                    } else {
-                                        currentPath + "/" + file.name
+                            label = "FolderNavigation"
+                        ) { (_, currentFiles) ->
+                            if (currentFiles.isEmpty() && searchQuery.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "Empty folder",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                }
+                            } else {
+                                if (isGridEnabled) {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 16.dp)
+                                    ) {
+                                        val columns = SettingsManager.gridColumns
+                                        val chunkedFiles = currentFiles.chunked(columns)
+                                        items(items = chunkedFiles) { rowFiles ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                rowFiles.forEach { fileItem ->
+                                                    FileGridItem(
+                                                        item = fileItem,
+                                                        modifier = Modifier.weight(1f),
+                                                        onClick = {
+                                                            if (fileItem.isDirectory) {
+                                                                currentPath = if (currentPath.endsWith("/")) {
+                                                                    currentPath + fileItem.name
+                                                                } else {
+                                                                    currentPath + "/" + fileItem.name
+                                                                }
+                                                            } else {
+                                                                FileOpener.openFile(context, fileItem.fullPath)
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                                if (rowFiles.size < columns) {
+                                                    repeat(columns - rowFiles.size) {
+                                                        Spacer(modifier = Modifier.weight(1f))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        items(currentFiles) { file ->
+                                            FileListItem(file = file, onClick = {
+                                                if (file.isDirectory) {
+                                                    currentPath = if (currentPath.endsWith("/")) {
+                                                        currentPath + file.name
+                                                    } else {
+                                                        currentPath + "/" + file.name
+                                                    }
+                                                }
+                                            })
+                                        }
                                     }
                                 }
-                            })
+                            }
                         }
                     }
                 }
@@ -402,73 +437,4 @@ fun BreadcrumbItem(
                 .clickable(onClick = onClick)
         )
     }
-}
-
-data class FileItem(
-    val name: String,
-    val isDirectory: Boolean = false,
-    val hasFiles: Boolean = false,
-    val itemCount: Int = 0,
-    val lastModified: String = "",
-    val size: String = "",
-    val fullPath: String = ""
-)
-
-@Composable
-fun FileListItem(
-    file: FileItem,
-    onClick: () -> Unit
-) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = {
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1
-            )
-        },
-        supportingContent = {
-            val subtext = if (file.isDirectory) {
-                "${file.itemCount} item${if (file.itemCount > 1) "s" else ""} | ${file.lastModified}"
-            } else {
-                "${file.size} | ${file.lastModified}"
-            }
-            Text(
-                text = subtext,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-        },
-        leadingContent = {
-            if (file.isDirectory) {
-                Icon(
-                    painter = painterResource(
-                        id = if (file.hasFiles) R.drawable.folderwithfile else R.drawable.folder
-                    ),
-                    contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.Unspecified,
-                    modifier = Modifier.size(28.dp)
-                )
-            } else {
-                val extension = file.name.substringAfterLast('.', "")
-                Icon(
-                    painter = painterResource(id = getIconForExtension(extension)),
-                    contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.Unspecified,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-        },
-        trailingContent = {
-            if (file.isDirectory) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    )
 }

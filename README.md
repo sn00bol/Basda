@@ -27,8 +27,8 @@ Other documents:
 ## Feature
 - Highly supporting root for Magisk/KSU (using libsu from topjohnwu)
 - Viewing, extract, archive,... file faster and compressed files
-- UI/UX using minimalist style with advance blurs
-- Advance and fast searching files
+- UI/UX using minimalist style and lightweight
+- Advance and fast managing archive and searching files
 - Support text editor (basic running code too) and watching video/audio without go to anywhere
 - Support PDF viewer and other file format (e.g. docx, pptx, xlsx,...)
 

@@ -5,15 +5,15 @@
 
 ## FIXED ISSUE OR CURRENTLY REVIEWED
 
-None
+### [ISSUE-001]: Click back on android navigation make app exit
+- **Status:** Fixed
+- **Description:** Click back android navigation make app exit, had fixed on v0.0.1
 
 ---
 
 ## STILL NOT FIX OR OTHER ISSUE
 
-### [ISSUE-001]: Click back on android navigation make app exit
-- **Status:** Not fixed
-- **Description:** you know the issue name right?
+
 
 ### [ISSUE-002]: Add new file/folder, rename, delete,... all anything about a file manager still not have, it only viewer file
 - **Status:** Not fixed
