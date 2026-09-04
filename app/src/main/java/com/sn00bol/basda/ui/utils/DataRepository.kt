@@ -25,6 +25,7 @@ object DataRepository {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
     private val drawableCache = LruCache<String, Drawable>(50)
+    private val appNameCache = LruCache<String, String>(100)
 
     fun init(context: Context) {
         if (appDao == null) {
@@ -39,6 +40,10 @@ object DataRepository {
     fun refreshRecent(context: Context) {
         scope.launch {
             val mediaStoreFiles = FileScanner.getRecentFiles(context, limit = 50)
+            
+            // Clear old cache to ensure we don't show filtered-out files anymore
+            appDao?.clearAllRecent()
+            
             mediaStoreFiles.forEach { fileItem ->
                 appDao?.insertFileCache(fileItem.toEntity())
             }
@@ -90,6 +95,11 @@ object DataRepository {
     fun getDrawable(path: String): Drawable? = drawableCache.get(path)
     fun putDrawable(path: String, drawable: Drawable) {
         drawableCache.put(path, drawable)
+    }
+
+    fun getAppName(path: String): String? = appNameCache.get(path)
+    fun putAppName(path: String, name: String) {
+        appNameCache.put(path, name)
     }
 
     private fun FileCacheEntity.toFileItem(): FileItem {

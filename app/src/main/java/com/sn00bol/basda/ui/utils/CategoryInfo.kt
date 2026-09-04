@@ -24,7 +24,7 @@ val CATEGORIES = listOf(
         CategoryType.VIDEOS,
         "Video",
         R.drawable.video,
-        listOf("mp4", "mov", "avi", "mkv", "flv", "webm")
+        listOf("mp4", "mov", "avi", "mkv", "flv", "webm", "3gp")
     ),
     CategoryDetail(
         CategoryType.AUDIO,

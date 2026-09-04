@@ -13,11 +13,14 @@ object FileScanner {
 
     fun getCategoryCount(context: Context, categoryType: CategoryType): Int {
         val detail = CATEGORIES.find { it.type == categoryType } ?: return 0
+        val showHidden = SettingsManager.showHiddenFiles
         
         return when (categoryType) {
             CategoryType.DOWNLOADS -> {
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                downloadDir.listFiles()?.count { it.isFile } ?: 0
+                downloadDir.listFiles()?.count { 
+                    it.isFile && (showHidden || !it.name.startsWith("."))
+                } ?: 0
             }
             else -> {
                 queryMediaStoreCount(context, detail.extensions)
@@ -28,11 +31,14 @@ object FileScanner {
     fun getFilesForCategory(context: Context, categoryType: CategoryType): List<FileItem> {
         val detail = CATEGORIES.find { it.type == categoryType } ?: return emptyList()
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val showHidden = SettingsManager.showHiddenFiles
 
         return when (categoryType) {
             CategoryType.DOWNLOADS -> {
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                downloadDir.listFiles()?.filter { it.isFile }?.map {
+                downloadDir.listFiles()?.filter { 
+                    it.isFile && (showHidden || !it.name.startsWith("."))
+                }?.map {
                     FileItem(
                         name = it.name,
                         isDirectory = false,
@@ -60,11 +66,16 @@ object FileScanner {
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         val files = mutableListOf<FileItem>()
 
+        // Get all known extensions from CATEGORIES
+        val allExtensions = CATEGORIES.flatMap { it.extensions }.map { it.lowercase() }.toSet()
+        
+        val selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} NOT LIKE '.*'"
+        
         val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
         
         val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val queryArgs = Bundle().apply {
-                putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, limit * 2) // Query more to filter later
                 putStringArray(
                     ContentResolver.QUERY_ARG_SORT_COLUMNS,
                     arrayOf(MediaStore.Files.FileColumns.DATE_MODIFIED)
@@ -73,13 +84,14 @@ object FileScanner {
                     ContentResolver.QUERY_ARG_SORT_DIRECTION,
                     ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
                 )
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
             }
             context.contentResolver.query(uri, projection, queryArgs, null)
         } else {
             context.contentResolver.query(
                 uri,
                 projection,
-                null,
+                selection,
                 null,
                 sortOrder
             )
@@ -91,23 +103,33 @@ object FileScanner {
             val sizeIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
             val dateIndex = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
 
-            var count = 0
-            while (c.moveToNext() && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || count < limit)) {
+            while (c.moveToNext() && files.size < limit) {
                 val name = c.getString(nameIndex) ?: ""
                 val path = c.getString(dataIndex) ?: ""
                 val size = c.getLong(sizeIndex)
                 val date = c.getLong(dateIndex) * 1000
 
-                files.add(
-                    FileItem(
-                        name = name,
-                        isDirectory = false,
-                        lastModified = dateFormat.format(Date(date)),
-                        size = formatFileSize(size),
-                        fullPath = path
+                val extension = name.substringAfterLast('.', "").lowercase()
+                
+                // Extremely strict filtering for Recent tab:
+                val isHidden = name.startsWith(".")
+                val isSystemPath = path.contains("/Android/data/") || 
+                                  path.contains("/Android/obb/") || 
+                                  path.contains("/.thumbnails/")
+                val hasKnownExtension = allExtensions.contains(extension)
+                val isZeroByte = size <= 0
+
+                if (extension.isNotEmpty() && hasKnownExtension && !isHidden && !isSystemPath && !isZeroByte) {
+                    files.add(
+                        FileItem(
+                            name = name,
+                            isDirectory = false,
+                            lastModified = dateFormat.format(Date(date)),
+                            size = formatFileSize(size),
+                            fullPath = path
+                        )
                     )
-                )
-                count++
+                }
             }
         }
         return files
@@ -115,7 +137,13 @@ object FileScanner {
 
     private fun queryMediaStoreCount(context: Context, extensions: List<String>): Int {
         val uri = MediaStore.Files.getContentUri("external")
-        val selection = extensions.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" }
+        val showHidden = SettingsManager.showHiddenFiles
+        
+        var selection = extensions.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" }
+        if (!showHidden) {
+            selection = "($selection) AND (${MediaStore.Files.FileColumns.DISPLAY_NAME} NOT LIKE '.*')"
+        }
+        
         val selectionArgs = extensions.map { "%.$it" }.toTypedArray()
         
         context.contentResolver.query(
@@ -138,8 +166,13 @@ object FileScanner {
             MediaStore.Files.FileColumns.SIZE,
             MediaStore.Files.FileColumns.DATE_MODIFIED
         )
+        val showHidden = SettingsManager.showHiddenFiles
         
-        val selection = extensions.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" }
+        var selection = extensions.joinToString(" OR ") { "${MediaStore.Files.FileColumns.DATA} LIKE ?" }
+        if (!showHidden) {
+            selection = "($selection) AND (${MediaStore.Files.FileColumns.DISPLAY_NAME} NOT LIKE '.*')"
+        }
+        
         val selectionArgs = extensions.map { "%.$it" }.toTypedArray()
         
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())

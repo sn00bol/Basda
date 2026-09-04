@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.0.2 ALPHA - 09.04.2026
+- Add sort date edit/filename/file size
+- Edit date on file and hide in recent tab
+- Fix downloads category only view images
+- Optimizing grid/list animation transititon
+- Hide system file on recent
+- Lock landscape screen (for now)
+
 ## v0.0.1 ALPHA - 09.03.2026
 - Upgrade database and advance cache
 - Optimizing background with mediastore to load recent tab

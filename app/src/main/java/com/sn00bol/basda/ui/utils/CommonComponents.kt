@@ -49,12 +49,14 @@ fun FileIcon(
     val extension = remember(file.name) { file.name.substringAfterLast('.', "").lowercase() }
     
     val isImage = remember(extension) {
-        extension in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp")
+        CATEGORIES.find { it.type == CategoryType.IMAGES }?.extensions?.contains(extension) == true
     }
     val isVideo = remember(extension) {
-        extension in listOf("mp4", "mov", "avi", "mkv", "3gp", "webm")
+        CATEGORIES.find { it.type == CategoryType.VIDEOS }?.extensions?.contains(extension) == true
     }
-    val isApk = remember(extension) { extension == "apk" }
+    val isApk = remember(extension) {
+        CATEGORIES.find { it.type == CategoryType.APKS }?.extensions?.contains(extension) == true
+    }
 
     if (file.isDirectory) {
         Icon(
@@ -248,10 +250,20 @@ fun SearchTopBar(
 }
 
 @Composable
-fun DocumentList(items: List<FileItem>, onItemClick: (FileItem) -> Unit) {
+fun DocumentList(
+    items: List<FileItem>, 
+    showDate: Boolean = true,
+    showApkName: Boolean = true,
+    onItemClick: (FileItem) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.forEach { item ->
-            FileListItem(file = item, onClick = { onItemClick(item) })
+            FileListItem(
+                file = item, 
+                showDate = showDate, 
+                showApkName = showApkName,
+                onClick = { onItemClick(item) }
+            )
         }
     }
 }
@@ -259,8 +271,11 @@ fun DocumentList(items: List<FileItem>, onItemClick: (FileItem) -> Unit) {
 @Composable
 fun FileListItem(
     file: FileItem,
+    showDate: Boolean = true,
+    showApkName: Boolean = true,
     onClick: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
@@ -277,10 +292,36 @@ fun FileListItem(
             )
         },
         supportingContent = {
+            val extension = remember(file.name) { file.name.substringAfterLast('.', "").lowercase() }
+            val isApk = remember(extension) {
+                CATEGORIES.find { it.type == CategoryType.APKS }?.extensions?.contains(extension) == true
+            }
+            
+            val apkName by produceState<String?>(initialValue = DataRepository.getAppName(file.fullPath), file.fullPath) {
+                if (isApk && value == null) {
+                    value = withContext(Dispatchers.IO) {
+                        try {
+                            val pm = context.packageManager
+                            val info = pm.getPackageArchiveInfo(file.fullPath, 0)
+                            info?.applicationInfo?.let {
+                                it.sourceDir = file.fullPath
+                                it.publicSourceDir = file.fullPath
+                                val name = it.loadLabel(pm).toString()
+                                name.also { DataRepository.putAppName(file.fullPath, it) }
+                            }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }
+            }
+
+            val relativeDate = remember(file.lastModified) { formatRelativeDate(file.lastModified) }
             val subtext = if (file.isDirectory) {
-                "${file.itemCount} items | ${file.lastModified}"
+                if (showDate) "${file.itemCount} items | $relativeDate" else "${file.itemCount} items"
             } else {
-                "${file.size} | ${file.lastModified}"
+                val sizeStr = if (isApk && showApkName && apkName != null) "$apkName | ${file.size}" else file.size
+                if (showDate) "$sizeStr | $relativeDate" else sizeStr
             }
             Text(
                 text = subtext,
@@ -309,6 +350,7 @@ fun FileGrid(
     items: List<FileItem>,
     columns: Int,
     modifier: Modifier = Modifier,
+    showApkName: Boolean = true,
     onItemClick: (FileItem) -> Unit
 ) {
     val chunkedItems = items.chunked(columns)
@@ -325,6 +367,7 @@ fun FileGrid(
                     FileGridItem(
                         item = item,
                         modifier = Modifier.weight(1f),
+                        showApkName = showApkName,
                         onClick = { onItemClick(item) }
                     )
                 }
@@ -339,7 +382,12 @@ fun FileGrid(
 }
 
 @Composable
-fun FileGridItem(item: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun FileGridItem(
+    item: FileItem, 
+    modifier: Modifier = Modifier, 
+    showApkName: Boolean = true,
+    onClick: () -> Unit
+) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -364,8 +412,33 @@ fun FileGridItem(item: FileItem, modifier: Modifier = Modifier, onClick: () -> U
         )
         
         if (!item.isDirectory && item.size.isNotEmpty()) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val extension = remember(item.name) { item.name.substringAfterLast('.', "").lowercase() }
+            val isApk = remember(extension) {
+                CATEGORIES.find { it.type == CategoryType.APKS }?.extensions?.contains(extension) == true
+            }
+            
+            val apkName by produceState<String?>(initialValue = DataRepository.getAppName(item.fullPath), item.fullPath) {
+                if (isApk && value == null) {
+                    value = withContext(Dispatchers.IO) {
+                        try {
+                            val pm = context.packageManager
+                            val info = pm.getPackageArchiveInfo(item.fullPath, 0)
+                            info?.applicationInfo?.let {
+                                it.sourceDir = item.fullPath
+                                it.publicSourceDir = item.fullPath
+                                val name = it.loadLabel(pm).toString()
+                                name.also { DataRepository.putAppName(item.fullPath, it) }
+                            }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }
+            }
+
             Text(
-                text = item.size,
+                text = if (isApk && showApkName && apkName != null) "$apkName | ${item.size}" else item.size,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,

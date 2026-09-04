@@ -103,7 +103,7 @@ fun MainNavigation() {
         }
     }
 
-    LaunchedEffect(hasPermissions) {
+    LaunchedEffect(hasPermissions, SettingsManager.showHiddenFiles) {
         if (hasPermissions) {
             DataRepository.refreshRecent(context)
         }

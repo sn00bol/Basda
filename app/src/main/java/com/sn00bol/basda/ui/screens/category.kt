@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sn00bol.basda.R
 import com.sn00bol.basda.ui.utils.*
@@ -56,7 +57,7 @@ fun CategoryScreen(
         onBack()
     }
 
-    val filesState = produceState(initialValue = emptyList<FileItem>(), categoryType, hasPermissions) {
+    val filesState = produceState(initialValue = emptyList<FileItem>(), categoryType, hasPermissions, SettingsManager.showHiddenFiles) {
         if (hasPermissions) {
             isLoading = true
             value = withContext(Dispatchers.IO) {
@@ -69,11 +70,15 @@ fun CategoryScreen(
         }
     }
 
-    val subCategories = remember { 
-        listOf("All file", "Images", "Videos", "Audio", "Documents", "APKs")
+    val subCategories = remember(categoryType) { 
+        when (categoryType) {
+            CategoryType.DOWNLOADS -> listOf("All file", "Images", "Videos", "Audio", "Documents", "APKs")
+            CategoryType.APKS -> listOf("Not installed", "Installed")
+            else -> emptyList()
+        }
     }
     
-    val pagerState = rememberPagerState(pageCount = { subCategories.size })
+    val pagerState = rememberPagerState(pageCount = { if (subCategories.isEmpty()) 1 else subCategories.size })
 
     Scaffold(
         topBar = {
@@ -183,26 +188,8 @@ fun CategoryScreen(
                     )
                 }
                 
-                if (categoryType == CategoryType.DOWNLOADS && !isSearchActive) {
-                    SecondaryScrollableTabRow(
-                        selectedTabIndex = pagerState.currentPage,
-                        edgePadding = 16.dp,
-                        containerColor = MaterialTheme.colorScheme.background,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                        divider = {},
-                        indicator = {
-                            TabRowDefaults.SecondaryIndicator(
-                                modifier = Modifier
-                                    .tabIndicatorOffset(
-                                        selectedTabIndex = pagerState.currentPage,
-                                        matchContentSize = true
-                                    )
-                                    .padding(horizontal = 16.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                height = 3.dp
-                            )
-                        }
-                    ) {
+                if ((categoryType == CategoryType.DOWNLOADS || categoryType == CategoryType.APKS) && !isSearchActive) {
+                    val content: @Composable () -> Unit = {
                         subCategories.forEachIndexed { index, subTitle ->
                             Tab(
                                 selected = pagerState.currentPage == index,
@@ -215,13 +202,56 @@ fun CategoryScreen(
                                     Text(
                                         text = subTitle,
                                         style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal
+                                        fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 },
                                 selectedContentColor = MaterialTheme.colorScheme.primary,
                                 unselectedContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
                         }
+                    }
+
+                    if (categoryType == CategoryType.APKS) {
+                        SecondaryTabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            divider = {},
+                            indicator = {
+                                TabRowDefaults.SecondaryIndicator(
+                                    modifier = Modifier.tabIndicatorOffset(
+                                        selectedTabIndex = pagerState.currentPage,
+                                        matchContentSize = true
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    height = 3.dp
+                                )
+                            },
+                            tabs = content
+                        )
+                    } else {
+                        SecondaryScrollableTabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            edgePadding = 16.dp,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            divider = {},
+                            indicator = {
+                                TabRowDefaults.SecondaryIndicator(
+                                    modifier = Modifier
+                                        .tabIndicatorOffset(
+                                            selectedTabIndex = pagerState.currentPage,
+                                            matchContentSize = true
+                                        )
+                                        .padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    height = 3.dp
+                                )
+                            },
+                            tabs = content
+                        )
                     }
                 }
             }
@@ -242,29 +272,47 @@ fun CategoryScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
-            } else if (categoryType == CategoryType.DOWNLOADS) {
+            } else if (categoryType == CategoryType.DOWNLOADS || categoryType == CategoryType.APKS) {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1
                 ) { pageIndex ->
-                    val subCategory = subCategories[pageIndex]
-                    val filteredFiles = remember(filesState.value, searchQuery, subCategory) {
-                        val allFiles = filesState.value.filter { it.name.contains(searchQuery, ignoreCase = true) }
-                        if (subCategory == "All") {
-                            allFiles
-                        } else {
-                            val extensions = when (subCategory) {
-                                "Images" -> CATEGORIES.find { it.type == CategoryType.IMAGES }?.extensions ?: emptyList()
-                                "Videos" -> CATEGORIES.find { it.type == CategoryType.VIDEOS }?.extensions ?: emptyList()
-                                "Audio" -> CATEGORIES.find { it.type == CategoryType.AUDIO }?.extensions ?: emptyList()
-                                "Documents" -> CATEGORIES.find { it.type == CategoryType.DOCUMENTS }?.extensions ?: emptyList()
-                                "APK" -> CATEGORIES.find { it.type == CategoryType.APKS }?.extensions ?: emptyList()
-                                else -> emptyList()
+                    val subCategory = subCategories.getOrNull(pageIndex) ?: ""
+                    val filteredFilesState = produceState<List<FileItem>>(
+                        initialValue = emptyList(), 
+                        filesState.value, 
+                        searchQuery, 
+                        subCategory
+                    ) {
+                        value = withContext(Dispatchers.IO) {
+                            val allFiles = filesState.value.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                            if (categoryType == CategoryType.DOWNLOADS) {
+                                if (subCategory == "All file") {
+                                    allFiles
+                                } else {
+                                    val extensions = when (subCategory) {
+                                        "Images" -> CATEGORIES.find { it.type == CategoryType.IMAGES }?.extensions ?: emptyList()
+                                        "Videos" -> CATEGORIES.find { it.type == CategoryType.VIDEOS }?.extensions ?: emptyList()
+                                        "Audio" -> CATEGORIES.find { it.type == CategoryType.AUDIO }?.extensions ?: emptyList()
+                                        "Documents" -> CATEGORIES.find { it.type == CategoryType.DOCUMENTS }?.extensions ?: emptyList()
+                                        "APKs" -> CATEGORIES.find { it.type == CategoryType.APKS }?.extensions ?: emptyList()
+                                        else -> emptyList()
+                                    }
+                                    allFiles.filter { it.name.substringAfterLast('.', "").lowercase() in extensions }
+                                }
+                            } else {
+                                // APKs logic: Installed / Not installed
+                                allFiles.filter { file ->
+                                    val pkg = getPackageNameFromApk(context, file.fullPath)
+                                    val isInstalled = pkg?.let { isPackageInstalled(context, it) } ?: false
+                                    if (subCategory == "Installed") isInstalled else !isInstalled
+                                }
                             }
-                            allFiles.filter { it.name.substringAfterLast('.', "").lowercase() in extensions }
                         }
                     }
+                    
+                    val filteredFiles = filteredFilesState.value
 
                     if (filteredFiles.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -317,7 +365,9 @@ fun CategoryFileList(
     files: List<FileItem>,
     categoryType: CategoryType,
     isGrid: Boolean,
-    containerColor: Color = Color.Transparent
+    containerColor: Color = Color.Transparent,
+    showDate: Boolean = true,
+    showApkName: Boolean = true
 ) {
     val context = LocalContext.current
     val columns = SettingsManager.gridColumns
@@ -391,6 +441,7 @@ fun CategoryFileList(
                                 items = items,
                                 columns = columns,
                                 modifier = Modifier.padding(horizontal = 8.dp),
+                                showApkName = showApkName,
                                 onItemClick = { 
                                     FileOpener.openFile(context, it.fullPath) 
                                 }
@@ -398,6 +449,8 @@ fun CategoryFileList(
                         } else {
                             DocumentList(
                                 items = items,
+                                showDate = showDate,
+                                showApkName = showApkName,
                                 onItemClick = { 
                                     FileOpener.openFile(context, it.fullPath) 
                                 }

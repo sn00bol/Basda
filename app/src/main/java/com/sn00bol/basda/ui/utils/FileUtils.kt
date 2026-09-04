@@ -15,8 +15,10 @@ fun formatFileSize(size: Long): String {
 
 fun formatRelativeDate(dateString: String): String {
     return try {
+        // Handle strings that might have time info (from fileView.kt)
+        val cleanDateString = dateString.substringBefore(' ')
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        val date = sdf.parse(dateString) ?: return dateString
+        val date = sdf.parse(cleanDateString) ?: return dateString
         
         val now = Calendar.getInstance()
         val target = Calendar.getInstance().apply { time = date }
@@ -37,13 +39,34 @@ fun formatRelativeDate(dateString: String): String {
         }
 
         val diffMillis = nowMidnight.timeInMillis - targetMidnight.timeInMillis
-        when (val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()) {
-            0 -> "Today"
-            1 -> "Yesterday"
-            in 2..7 -> "$diffDays days ago"
-            else -> SimpleDateFormat("d MMMM, yyyy", Locale.getDefault()).format(date)
+        val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()
+        when {
+            diffDays == 0 -> "Today"
+            diffDays == 1 -> "Yesterday"
+            diffDays in 2..30 -> "$diffDays days ago"
+            else -> SimpleDateFormat("dd MMMM, yyyy", Locale.getDefault()).format(date)
         }
     } catch (_: Exception) {
         dateString
     }
+}
+
+fun isPackageInstalled(context: android.content.Context, packageName: String): Boolean {
+    return try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(packageName, 0)
+        }
+        true
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        false
+    }
+}
+
+fun getPackageNameFromApk(context: android.content.Context, apkPath: String): String? {
+    val pm = context.packageManager
+    val info = pm.getPackageArchiveInfo(apkPath, 0)
+    return info?.packageName
 }

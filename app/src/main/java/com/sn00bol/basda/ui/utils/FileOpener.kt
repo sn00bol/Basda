@@ -17,16 +17,29 @@ object FileOpener {
                 file
             )
             
-            val extension = MimeTypeMap.getFileExtensionFromUrl(Uri.fromFile(file).toString())
-            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
+            val extension = file.extension.lowercase()
+            var mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+            
+            if (mimeType == null) {
+                mimeType = when (extension) {
+                    "apk" -> "application/vnd.android.package-archive"
+                    "txt" -> "text/plain"
+                    "pdf" -> "application/pdf"
+                    else -> "*/*"
+                }
+            }
             
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // Add this for better compatibility with newer Android versions
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             
-            context.startActivity(intent)
+            context.startActivity(Intent.createChooser(intent, "Open with").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         } catch (e: Exception) {
             e.printStackTrace()
             // Optional: Show toast error

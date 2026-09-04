@@ -66,6 +66,12 @@ fun MainMenu(
         com.sn00bol.basda.ui.utils.StorageHelper.getSdCardPath(context)
     }
 
+    LaunchedEffect(hasPermissions, SettingsManager.showHiddenFiles) {
+        if (hasPermissions) {
+            DataRepository.refreshRecent(context)
+        }
+    }
+
     val recentFilesFromDb by DataRepository.getRecentFilesFromDb()?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) }
     val recentFiles = recentFilesFromDb
 
@@ -335,7 +341,9 @@ fun MainMenu(
                             files = recentFiles,
                             categoryType = CategoryType.DOWNLOADS,
                             isGrid = isGridEnabled,
-                            containerColor = MaterialTheme.colorScheme.background
+                            containerColor = MaterialTheme.colorScheme.background,
+                            showDate = false,
+                            showApkName = false
                         )
                     }
                 }

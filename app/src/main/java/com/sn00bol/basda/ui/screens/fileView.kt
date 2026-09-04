@@ -1,10 +1,5 @@
 package com.sn00bol.basda.ui.screens
 
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -18,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -26,12 +22,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sn00bol.basda.R
 import com.sn00bol.basda.ui.utils.*
 import java.text.SimpleDateFormat
 import java.util.*
+
+enum class FileSortOption(val title: String) {
+    FILENAME("Filename"),
+    DATE_EDIT("Date edit"),
+    FILE_SIZE("File size")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +46,9 @@ fun FileViewScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var currentSortOption by remember { mutableStateOf(FileSortOption.FILENAME) }
+    var isAscending by remember { mutableStateOf(true) }
 
     var entryVisible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -76,18 +80,20 @@ fun FileViewScreen(
         }
     }
 
-    val files = remember(currentPath, searchQuery, SettingsManager.showHiddenFiles, hasPermissions) {
+    val files = remember(currentPath, searchQuery, SettingsManager.showHiddenFiles, currentSortOption, isAscending, hasPermissions) {
         if (!hasPermissions || currentPath.isEmpty()) return@remember emptyList()
         
         try {
             val root = java.io.File(currentPath)
             if (root.exists() && root.isDirectory) {
-                val dateFormat = SimpleDateFormat("dd/MM/yy hh:mm a", Locale.getDefault())
+                val dateFormat = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
                 val showHidden = SettingsManager.showHiddenFiles
                 
-                root.listFiles()?.filter { 
+                val rawFiles = root.listFiles()?.filter { 
                     if (!showHidden) !it.name.startsWith(".") else true 
-                }?.map {
+                } ?: emptyList()
+
+                val tempFiles = rawFiles.map {
                     val itemCount = if (it.isDirectory) it.list()?.size ?: 0 else 0
                     val lastModified = dateFormat.format(Date(it.lastModified()))
                     
@@ -100,7 +106,39 @@ fun FileViewScreen(
                         size = if (!it.isDirectory) formatFileSize(it.length()) else "",
                         fullPath = it.absolutePath
                     )
-                }?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: emptyList()
+                }
+
+                when (currentSortOption) {
+                    FileSortOption.FILENAME -> tempFiles.sortedWith(
+                        if (isAscending) {
+                            compareBy({ !it.isDirectory }, { it.name.lowercase() })
+                        } else {
+                            compareBy<FileItem> { !it.isDirectory }.thenByDescending { it.name.lowercase() }
+                        }
+                    )
+                    FileSortOption.DATE_EDIT -> tempFiles.sortedWith(
+                        if (isAscending) {
+                            compareBy<FileItem> { !it.isDirectory }.thenBy {
+                                java.io.File(it.fullPath).lastModified() 
+                            }
+                        } else {
+                            compareBy<FileItem> { !it.isDirectory }.thenByDescending {
+                                java.io.File(it.fullPath).lastModified() 
+                            }
+                        }
+                    )
+                    FileSortOption.FILE_SIZE -> tempFiles.sortedWith(
+                        if (isAscending) {
+                            compareBy<FileItem> { !it.isDirectory }.thenBy {
+                                if (it.isDirectory) 0L else java.io.File(it.fullPath).length()
+                            }
+                        } else {
+                            compareBy<FileItem> { !it.isDirectory }.thenByDescending {
+                                if (it.isDirectory) 0L else java.io.File(it.fullPath).length()
+                            }
+                        }
+                    )
+                }
             } else {
                 emptyList()
             }
@@ -248,7 +286,6 @@ fun FileViewScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Current path: Breadcrumb clickable
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -310,6 +347,97 @@ fun FileViewScreen(
                 }
             }
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${files.size} items",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+
+                Box {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = { showSortMenu = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = currentSortOption.title,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { isAscending = !isAscending },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                contentDescription = "Toggle Sort Order",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        offset = androidx.compose.ui.unit.DpOffset(x = (0).dp, y = (-40).dp),
+                        shape = RoundedCornerShape(16.dp),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.widthIn(min = 200.dp)
+                    ) {
+                        FileSortOption.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(end = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = option.title,
+                                            modifier = Modifier.weight(1f)
+                                        ) 
+                                        if (currentSortOption == option) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    currentSortOption = option
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -324,12 +452,14 @@ fun FileViewScreen(
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AnimatedContent(
-                            targetState = currentPath to files,
+                            targetState = Triple(currentPath, files, isGridEnabled),
                             transitionSpec = {
-                                val (targetPath, targetFiles) = targetState
-                                val (initialPath, _) = initialState
+                                val (targetPath, targetFiles, targetIsGrid) = targetState
+                                val (initialPath, initialFiles, initialIsGrid) = initialState
                                 
-                                if (targetFiles.isEmpty() && searchQuery.isEmpty()) {
+                                if (targetPath == initialPath) {
+                                    fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+                                } else if (targetFiles.isEmpty() && searchQuery.isEmpty()) {
                                     fadeIn(tween(150)) togetherWith fadeOut(tween(150))
                                 } else {
                                     val isForward = targetPath.length > initialPath.length
@@ -343,7 +473,7 @@ fun FileViewScreen(
                                 }
                             },
                             label = "FolderNavigation"
-                        ) { (_, currentFiles) ->
+                        ) { (path, currentFiles, targetIsGrid) ->
                             if (currentFiles.isEmpty() && searchQuery.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
@@ -353,7 +483,7 @@ fun FileViewScreen(
                                     )
                                 }
                             } else {
-                                if (isGridEnabled) {
+                                if (targetIsGrid) {
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize(),
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -372,10 +502,10 @@ fun FileViewScreen(
                                                         modifier = Modifier.weight(1f),
                                                         onClick = {
                                                             if (fileItem.isDirectory) {
-                                                                currentPath = if (currentPath.endsWith("/")) {
-                                                                    currentPath + fileItem.name
+                                                                currentPath = if (path.endsWith("/")) {
+                                                                    path + fileItem.name
                                                                 } else {
-                                                                    currentPath + "/" + fileItem.name
+                                                                    path + "/" + fileItem.name
                                                                 }
                                                             } else {
                                                                 FileOpener.openFile(context, fileItem.fullPath)
@@ -399,11 +529,13 @@ fun FileViewScreen(
                                         items(currentFiles) { file ->
                                             FileListItem(file = file, onClick = {
                                                 if (file.isDirectory) {
-                                                    currentPath = if (currentPath.endsWith("/")) {
-                                                        currentPath + file.name
+                                                    currentPath = if (path.endsWith("/")) {
+                                                        path + file.name
                                                     } else {
-                                                        currentPath + "/" + file.name
+                                                        path + "/" + file.name
                                                     }
+                                                } else {
+                                                    FileOpener.openFile(context, file.fullPath)
                                                 }
                                             })
                                         }

@@ -32,6 +32,6 @@ interface AppDao {
     @Query("UPDATE file_cache SET lastAccessed = :timestamp WHERE path = :path")
     suspend fun updateLastAccessed(path: String, timestamp: Long)
 
-    @Query("DELETE FROM file_cache WHERE path = :path")
-    suspend fun deleteFileCache(path: String)
+    @Query("DELETE FROM file_cache")
+    suspend fun clearAllRecent()
 }
